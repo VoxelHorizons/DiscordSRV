@@ -75,13 +75,19 @@ public class DiscordAccountLinkListener extends ListenerAdapter implements Slash
         // Only publish a /link command if this server actually has an explicitly mapped
         // account-link channel. Avoid adding commands to unrelated Discord guilds.
         String channelId = DiscordSRV.getPlugin().getChannels().get("link");
-        if (channelId == null || channelId.trim().isEmpty()) return Collections.emptySet();
+        if (channelId == null || channelId.trim().isEmpty() || DiscordSRV.getPlugin().getJda() == null)
+            return Collections.emptySet();
+        TextChannel configuredChannel = DiscordSRV.getPlugin().getJda().getTextChannelById(channelId);
+        if (configuredChannel == null) {
+            DiscordSRV.warning("Secure linking needs a valid mapped text channel: Channels.link");
+            return Collections.emptySet();
+        }
 
         CommandData command = new CommandData("link", "Privately link your Minecraft account")
                 .addOption(OptionType.STRING, "code", "Your four-digit Minecraft account linking code", true);
         PluginSlashCommand registration = new PluginSlashCommand(DiscordSRV.getPlugin(), command);
         return Collections.singleton(registration.addGuildFilter(
-                DiscordSRV.getPlugin().getJda().getTextChannelById(channelId).getGuild()));
+                configuredChannel.getGuild()));
     }
 
     @SlashCommand(path = "link", deferReply = true, deferEphemeral = true)
