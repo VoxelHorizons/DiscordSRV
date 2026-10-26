@@ -125,6 +125,8 @@ public final class StatusWebhookPublisher {
     private JSONObject buildPayload(String message, boolean offline) {
         JSONObject json = new JSONObject();
         json.put("allowed_mentions", new JSONObject().put("parse", new JSONArray()));
+        String avatarUrl = configString("StatusWebhookAvatarUrl", "").trim();
+        if (StringUtils.isNotBlank(avatarUrl)) json.put("avatar_url", avatarUrl);
         if (DiscordSRV.config().getBooleanElse("StatusWebhookEmbedEnabled", true)) {
             String color = configString(offline ? "StatusWebhookEmbedOfflineColor" : "StatusWebhookEmbedOnlineColor",
                     offline ? "ED4245" : "57F287");
