@@ -24,7 +24,7 @@ Channels: {"global": "YOUR_CHAT_CHANNEL_ID", "status": "YOUR_SERVER_STATUS_CHANN
 StatusWebhookEnabled: true
 StatusWebhookChannelId: "" # Or an explicit target Discord channel ID
 StatusWebhookName: "VH Server Status"
-StatusWebhookAvatarUrl: ""
+StatusWebhookAvatarUrl: "" # Automatically reuse the DiscordSRV bot's avatar
 StatusWebhookOnlineMessage: "🟢 **Server Online**\\n🎮 %status%\\n👥 %online%/%max% players"
 StatusWebhookOfflineMessage: "🔴 **Server Offline**"
 StatusWebhookShutdownAction: "EDIT"
@@ -38,6 +38,12 @@ Use `%status%` to display the currently rotated `DiscordGameStatus` value;
 `%online%`, `%max%`, `%online_status%`, and PlaceholderAPI placeholders are
 also available. The status message follows `StatusUpdateRateInMinutes`
 (default two minutes) and updates after `/discord reload`.
+
+When `StatusWebhookAvatarUrl` is blank, the status webhook itself and its
+messages automatically display the DiscordSRV bot's current profile picture
+(instead of the default Discord icon). An explicit HTTPS image URL overrides
+this. The first avatar synchronization may replace the managed message once
+because Discord can retain the old avatar on existing webhook messages.
 
 The DiscordSRV bot needs **Manage Webhooks** permission in the target text
 channel. It creates or reuses an *owned* dedicated webhook; **do not provide
