@@ -92,7 +92,14 @@ public final class StatusWebhookPublisher {
         webhookChannelId = null;
         webhookUrl = null;
         // Turning the feature off removes the managed message instead of leaving stale "online" information.
-        if (!enabled() && plugin.getJda() != null) deleteTrackedMessage(false);
+        if (!enabled()) {
+            if (plugin.getJda() != null) deleteTrackedMessage(false);
+            return;
+        }
+        // Apply edited templates/channel selection immediately; do not wait for the next presence rotation.
+        github.scarsz.discordsrv.objects.threads.PresenceUpdater updater = plugin.getPresenceUpdater();
+        publishOnline(updater == null ? null : updater.getLastStatus(),
+                updater == null ? null : updater.getLastOnlineStatus());
     }
 
     private TextChannel resolveChannel() {
