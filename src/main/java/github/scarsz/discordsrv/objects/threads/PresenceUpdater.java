@@ -40,8 +40,11 @@ import java.util.concurrent.TimeUnit;
 public class PresenceUpdater extends Thread {
 
     private int lastStatusIndex = 0;
-    private String lastStatus = null;
-    private OnlineStatus lastOnlineStatus = null;
+    private volatile String lastStatus = null;
+    private volatile OnlineStatus lastOnlineStatus = null;
+
+    public String getLastStatus() { return lastStatus; }
+    public OnlineStatus getLastOnlineStatus() { return lastOnlineStatus; }
 
     public PresenceUpdater() {
         setName("DiscordSRV - Presence Updater");
@@ -87,6 +90,10 @@ public class PresenceUpdater extends Thread {
                 boolean same = Objects.equals(lastStatus, status) && Objects.equals(onlineStatus, lastOnlineStatus);
                 lastStatus = status;
                 lastOnlineStatus = onlineStatus;
+
+                if (DiscordSRV.getPlugin().getStatusWebhookPublisher() != null) {
+                    DiscordSRV.getPlugin().getStatusWebhookPublisher().publishOnline(status, onlineStatus);
+                }
 
                 if (!same) {
                     if (StringUtils.isNotBlank(status)) {

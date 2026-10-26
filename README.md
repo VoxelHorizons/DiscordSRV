@@ -11,6 +11,57 @@ A Minecraft to Discord and back link plugin
 
 [![](https://bstats.org/signatures/bukkit/DiscordSRV.svg)](https://bstats.org/plugin/bukkit/DiscordSRV/387 "DiscordSRV on bStats")
 
+## VoxelHorizons fork: Persistent status webhook
+
+The fork can maintain **one editable Discord server-status message** instead of
+posting a separate status notification on every Minecraft start and shutdown.
+The normal DiscordSRV startup/shutdown messages are unaffected until enabled.
+
+Add these settings to `plugins/DiscordSRV/config.yml`:
+
+```yaml
+Channels: {"global": "YOUR_CHAT_CHANNEL_ID", "status": "YOUR_SERVER_STATUS_CHANNEL_ID"}
+StatusWebhookEnabled: true
+StatusWebhookChannelId: "" # Or an explicit target Discord channel ID
+StatusWebhookName: "VH Server Status"
+StatusWebhookAvatarUrl: "" # Automatically reuse the DiscordSRV bot's avatar
+StatusWebhookOnlineMessage: "🟢 **Server Online**\\n🎮 %status%\\n👥 %online%/%max% players"
+StatusWebhookOfflineMessage: "🔴 **Server Offline**"
+StatusWebhookShutdownAction: "EDIT"
+StatusWebhookEmbedEnabled: true
+StatusWebhookEmbedTitle: "VoxelHorizons • Server Status"
+StatusWebhookEmbedOnlineColor: "57F287"
+StatusWebhookEmbedOfflineColor: "ED4245"
+```
+
+Use `%status%` to display the currently rotated `DiscordGameStatus` value;
+`%online%`, `%max%`, `%online_status%`, and PlaceholderAPI placeholders are
+also available. The status message follows `StatusUpdateRateInMinutes`
+(default two minutes) and updates after `/discord reload`.
+
+When `StatusWebhookAvatarUrl` is blank, the status webhook itself and its
+messages automatically display the DiscordSRV bot's current profile picture
+(instead of the default Discord icon). An explicit HTTPS image URL overrides
+this. The first avatar synchronization may replace the managed message once
+because Discord can retain the old avatar on existing webhook messages.
+
+The DiscordSRV bot needs **Manage Webhooks** permission in the target text
+channel. It creates or reuses an *owned* dedicated webhook; **do not provide
+or store a webhook token**. Only the channel and message IDs are persisted to
+`status-webhook-state.yml` for editing across restarts. If you delete the
+managed message or webhook in Discord, it is re-created on the next update.
+
+Shutdown actions: `EDIT` makes the message show "offline"; `DELETE` deletes
+the message but retains the managed webhook; `DELETE_WEBHOOK` removes both
+the managed message and its bot-owned webhook. When this feature is turned
+off with `/discord reload`, DiscordSRV deletes the tracked message.
+
+**Limitations:** Normal clean shutdowns update the status. Power loss,
+forced kills, and crashes cannot send an offline notification; use external
+uptime monitoring if detecting those events is required. If several Minecraft
+instances share one Discord channel, give each one a distinct
+`StatusWebhookName` so they do not edit each other's status.
+
 ## Thanks to:
 <table>
     <tr>

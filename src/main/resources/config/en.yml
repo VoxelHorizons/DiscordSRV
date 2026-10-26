@@ -103,6 +103,34 @@ DiscordGameStatus: ["playing Minecraft"]
 DiscordOnlineStatus: ONLINE
 StatusUpdateRateInMinutes: 2
 
+# Persistent status webhook (VoxelHorizons fork)
+# When enabled, replaces separate server start/stop status messages with ONE webhook
+# message that DiscordSRV edits every StatusUpdateRateInMinutes cycle.
+# Set Channels: {"global": "...", "status": "YOUR_STATUS_CHANNEL_ID"}, or supply
+# an explicit StatusWebhookChannelId. The channel must be a TEXT channel and
+# the bot must have Manage Webhooks permission there.
+# The webhook is created/reused automatically; do not paste a webhook URL/token.
+# StatusWebhookAvatarUrl: leave blank to mirror the DiscordSRV bot's profile picture
+# onto the managed webhook itself and its messages; alternatively provide a custom HTTPS image URL.
+# Changing the avatar may recreate the single managed message once so the new image displays.
+# DiscordGameStatus's current rotating value is available as %status%.
+# Other placeholders: %online%, %max%, %online_status%, and PlaceholderAPI values.
+# ShutdownAction: EDIT (show offline), DELETE (remove message), or
+# DELETE_WEBHOOK (remove the message and its dedicated bot-owned webhook).
+# Message and channel IDs are stored in plugins/DiscordSRV/status-webhook-state.yml.
+# Keep the enabled channel dedicated to this server's status (one message per server).
+StatusWebhookEnabled: false
+StatusWebhookChannelId: ""
+StatusWebhookName: "VH Server Status"
+StatusWebhookAvatarUrl: "" # blank = automatically use the DiscordSRV bot's picture
+StatusWebhookOnlineMessage: "🟢 **Server Online**\n🎮 %status%\n👥 %online%/%max% players"
+StatusWebhookOfflineMessage: "🔴 **Server Offline**"
+StatusWebhookShutdownAction: "EDIT"
+StatusWebhookEmbedEnabled: true
+StatusWebhookEmbedTitle: "VoxelHorizons • Server Status"
+StatusWebhookEmbedOnlineColor: "57F287"
+StatusWebhookEmbedOfflineColor: "ED4245"
+
 # Chat channel information
 # The chat channel is the text channel that all messages in-game will be sent to and all messages sent
 # to this channel on Discord will be sent in-game

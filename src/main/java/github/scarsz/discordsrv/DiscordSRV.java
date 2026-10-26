@@ -54,6 +54,7 @@ import github.scarsz.discordsrv.objects.managers.link.JdbcAccountLinkManager;
 import github.scarsz.discordsrv.objects.managers.link.file.AppendOnlyFileAccountLinkManager;
 import github.scarsz.discordsrv.objects.proxy.AlwaysEnabledPluginDynamicProxy;
 import github.scarsz.discordsrv.objects.threads.*;
+import github.scarsz.discordsrv.util.StatusWebhookPublisher;
 import github.scarsz.discordsrv.util.*;
 import lombok.Getter;
 import me.scarsz.jdaappender.ChannelLoggingHandler;
@@ -162,6 +163,7 @@ public class DiscordSRV extends JavaPlugin {
     @Getter private ChannelUpdater channelUpdater;
     @Getter private NicknameUpdater nicknameUpdater;
     @Getter private PresenceUpdater presenceUpdater;
+    @Getter private StatusWebhookPublisher statusWebhookPublisher;
     @Getter private ServerWatchdog serverWatchdog;
     @Getter private ScheduledExecutorService updateChecker = null;
 
@@ -479,6 +481,7 @@ public class DiscordSRV extends JavaPlugin {
 
         ConfigUtil.migrate();
         ConfigUtil.logMissingOptions();
+        statusWebhookPublisher = new StatusWebhookPublisher(this);
         DiscordSRV.debug("Language is " + config.getLanguage().getName());
 
         version = getDescription().getVersion();
@@ -1034,13 +1037,20 @@ public class DiscordSRV extends JavaPlugin {
         // warn if the console channel is connected to a chat channel
         if (getMainTextChannel() != null && getConsoleChannel() != null && getMainTextChannel().getId().equals(getConsoleChannel().getId())) DiscordSRV.warning(LangUtil.InternalMessage.CONSOLE_CHANNEL_ASSIGNED_TO_LINKED_CHANNEL);
 
-        // send server startup message
+        // In webhook mode, maintain a single persistent status message instead of posting a new
+        // start/stop message on each restart. The presence thread supplies the rotating status.
         SchedulerUtil.runTaskLater(this, () -> {
-            DiscordUtil.queueMessage(
-                    getOptionalTextChannel("status"),
-                    PlaceholderUtil.replacePlaceholdersToDiscord(LangUtil.Message.SERVER_STARTUP_MESSAGE.toString()),
-                    true
-            );
+            if (statusWebhookPublisher.enabled()) {
+                SchedulerUtil.runTaskAsynchronously(this, () -> statusWebhookPublisher.publishOnline(
+                        presenceUpdater == null ? null : presenceUpdater.getLastStatus(),
+                        presenceUpdater == null ? null : presenceUpdater.getLastOnlineStatus()));
+            } else {
+                DiscordUtil.queueMessage(
+                        getOptionalTextChannel("status"),
+                        PlaceholderUtil.replacePlaceholdersToDiscord(LangUtil.Message.SERVER_STARTUP_MESSAGE.toString()),
+                        true
+                );
+            }
         }, 20);
 
         // big warning about respect chat plugins
@@ -1397,6 +1407,9 @@ public class DiscordSRV extends JavaPlugin {
         shuttingDown = true;
 
         final long shutdownStartTime = System.currentTimeMillis();
+        // Resolve PlaceholderAPI strings before entering the shutdown worker thread.
+        final String statusWebhookShutdownMessage = statusWebhookPublisher != null && statusWebhookPublisher.enabled()
+                ? statusWebhookPublisher.renderShutdownMessage() : null;
 
         // prepare the shutdown message
         String shutdownFormat = LangUtil.Message.SERVER_SHUTDOWN_MESSAGE.toString();
@@ -1534,8 +1547,12 @@ public class DiscordSRV extends JavaPlugin {
                 // Clear JDA listeners
                 if (jda != null) jda.getEventManager().getRegisteredListeners().forEach(listener -> jda.getEventManager().unregister(listener));
 
-                // send server shutdown message
-                DiscordUtil.sendMessageBlocking(getOptionalTextChannel("status"), finalShutdownFormat, true);
+                // Update (or delete) the same webhook status on shutdown; retain legacy messages otherwise.
+                if (statusWebhookPublisher != null && statusWebhookPublisher.enabled()) {
+                    statusWebhookPublisher.publishShutdown(statusWebhookShutdownMessage);
+                } else {
+                    DiscordUtil.sendMessageBlocking(getOptionalTextChannel("status"), finalShutdownFormat, true);
+                }
 
                 // try to shut down jda gracefully
                 if (jda != null) {

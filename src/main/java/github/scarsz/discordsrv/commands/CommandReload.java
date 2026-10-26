@@ -59,6 +59,10 @@ public class CommandReload {
 
         MessageUtil.sendMessage(sender, ChatColor.AQUA + LangUtil.InternalMessage.RELOADED.toString());
 
+        if (DiscordSRV.getPlugin().getStatusWebhookPublisher() != null) {
+            SchedulerUtil.runTaskAsynchronously(DiscordSRV.getPlugin(), () ->
+                    DiscordSRV.getPlugin().getStatusWebhookPublisher().onConfigReload());
+        }
         DiscordSRV.api.callEvent(new ConfigReloadedEvent(sender));
     }
 
