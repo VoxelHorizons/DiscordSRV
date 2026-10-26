@@ -49,11 +49,13 @@ import org.bukkit.OfflinePlayer;
 
 import java.util.Collections;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 
 public class DiscordAccountLinkListener extends ListenerAdapter implements SlashCommandProvider {
 
     private static final String PREFIX = "MinecraftDiscordAccountLinkChannel";
+    private final Set<String> warnedMissingDeletePermission = ConcurrentHashMap.newKeySet();
 
     private boolean enabled(String name, boolean fallback) {
         return DiscordSRV.config().getBooleanElse(PREFIX + name, fallback);
@@ -156,9 +158,13 @@ public class DiscordAccountLinkListener extends ListenerAdapter implements Slash
         // The whole channel is protected, including arbitrary messages from bots.
         if (!enabled("DeleteMessages", true)) return;
         if (!event.getGuild().getSelfMember().hasPermission(linkChannel, Permission.MESSAGE_MANAGE)) {
-            DiscordSRV.debug(Debug.ACCOUNT_LINKING, "Missing Manage Messages permission in the account-link channel");
+            if (warnedMissingDeletePermission.add(linkChannel.getId())) {
+                DiscordSRV.warning("SECURITY: Cannot automatically remove link codes in #" + linkChannel.getName()
+                        + ". Grant the bot Manage Messages permission; use /link meanwhile.");
+            }
             return;
         }
+        warnedMissingDeletePermission.remove(linkChannel.getId());
 
         // Delete FIRST: do not wait on account-link processing, even if the message
         // contains no code or linking is currently unavailable.
