@@ -23,8 +23,17 @@ package github.scarsz.discordsrv.listeners;
 import github.scarsz.discordsrv.Debug;
 import github.scarsz.discordsrv.DiscordSRV;
 import github.scarsz.discordsrv.api.events.DiscordPrivateMessageReceivedEvent;
+import github.scarsz.discordsrv.api.commands.PluginSlashCommand;
+import github.scarsz.discordsrv.api.commands.SlashCommand;
+import github.scarsz.discordsrv.api.commands.SlashCommandProvider;
+import github.scarsz.discordsrv.util.LangUtil;
 import github.scarsz.discordsrv.util.DiscordUtil;
 import net.dv8tion.jda.api.entities.Member;
+import net.dv8tion.jda.api.Permission;
+import net.dv8tion.jda.api.events.interaction.SlashCommandEvent;
+import net.dv8tion.jda.api.interactions.commands.OptionType;
+import net.dv8tion.jda.api.interactions.commands.OptionMapping;
+import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.TextChannel;
@@ -35,14 +44,79 @@ import net.dv8tion.jda.api.exceptions.ErrorHandler;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.dv8tion.jda.api.requests.RestAction;
-import net.dv8tion.jda.api.requests.restaction.MessageAction;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 
+import java.util.Collections;
+import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
-public class DiscordAccountLinkListener extends ListenerAdapter {
+public class DiscordAccountLinkListener extends ListenerAdapter implements SlashCommandProvider {
+
+    private static final String PREFIX = "MinecraftDiscordAccountLinkChannel";
+
+    private boolean enabled(String name, boolean fallback) {
+        return DiscordSRV.config().getBooleanElse(PREFIX + name, fallback);
+    }
+
+    private String translated(LangUtil.Message key, String fallback) {
+        String value = key.toString();
+        return value == null || value.trim().isEmpty() ? fallback : value;
+    }
+
+    private String clean(String input) {
+        // Never echo raw linking codes back to the public channel.
+        return input.length() > 2000 ? input.substring(0, 2000) : input;
+    }
+
+    @Override
+    public Set<PluginSlashCommand> getSlashCommands() {
+        if (!enabled("EnablePrivateSlashCommand", true)) return Collections.emptySet();
+        // Only publish a /link command if this server actually has an explicitly mapped
+        // account-link channel. Avoid adding commands to unrelated Discord guilds.
+        String channelId = DiscordSRV.getPlugin().getChannels().get("link");
+        if (channelId == null || channelId.trim().isEmpty()) return Collections.emptySet();
+
+        CommandData command = new CommandData("link", "Privately link your Minecraft account")
+                .addOption(OptionType.STRING, "code", "Your four-digit Minecraft account linking code", true);
+        PluginSlashCommand registration = new PluginSlashCommand(DiscordSRV.getPlugin(), command);
+        return Collections.singleton(registration.addGuildFilter(
+                DiscordSRV.getPlugin().getJda().getTextChannelById(channelId).getGuild()));
+    }
+
+    @SlashCommand(path = "link", deferReply = true, deferEphemeral = true)
+    public void onPrivateLinkCommand(SlashCommandEvent event) {
+        TextChannel linkChannel = DiscordSRV.getPlugin().getDestinationTextChannelForGameChannelName("link");
+        if (linkChannel == null || event.getChannel() == null || !event.getChannel().getId().equals(linkChannel.getId())) {
+            event.getHook().sendMessage(clean(translated(LangUtil.Message.LINK_CHANNEL_OUTSIDE,
+                    "Please use this command in the account-link channel."))).queue();
+            return;
+        }
+        OptionMapping option = event.getOption("code");
+        String code = option == null ? "" : option.getAsString().trim();
+        if (!code.matches("[0-9]{4}")) {
+            event.getHook().sendMessage(clean(translated(LangUtil.Message.INVALID_CODE,
+                    "Your link code must be exactly four digits."))).queue();
+            return;
+        }
+        if (DiscordSRV.getPlugin().getAccountLinkManager() == null) {
+            event.getHook().sendMessage(clean(translated(LangUtil.Message.LINK_CHANNEL_UNAVAILABLE,
+                    "Account linking is temporarily unavailable. Please try again later."))).queue();
+            return;
+        }
+        try {
+            String result = DiscordSRV.getPlugin().getAccountLinkManager().process(code, event.getUser().getId());
+            if (result == null) result = translated(LangUtil.Message.LINK_CHANNEL_UNAVAILABLE,
+                    "Account linking is temporarily unavailable. Please try again later.");
+            String format = translated(LangUtil.Message.LINK_CHANNEL_PRIVATE_RESULT, "%result%");
+            event.getHook().sendMessage(clean(format.replace("%result%", result))).queue();
+        } catch (Exception failure) {
+            DiscordSRV.warning("Private account link request could not be completed (" + failure.getClass().getSimpleName() + ")");
+            event.getHook().sendMessage(clean(translated(LangUtil.Message.LINK_CHANNEL_UNAVAILABLE,
+                    "Account linking is temporarily unavailable. Please try again later."))).queue();
+        }
+    }
+
 
     @Override
     public void onPrivateMessageReceived(PrivateMessageReceivedEvent event) {
@@ -58,35 +132,68 @@ public class DiscordAccountLinkListener extends ListenerAdapter {
         if (reply != null) event.getMessage().reply(reply).queue();
     }
 
+
     private final ErrorHandler ignoreFailedToDeleteMessage = new ErrorHandler()
             .ignore(ErrorResponse.UNKNOWN_MESSAGE)
             .ignore(ErrorResponse.MISSING_ACCESS);
 
     @Override
     public void onGuildMessageReceived(GuildMessageReceivedEvent event) {
-        // don't process messages sent by bots
-        if (event.getAuthor().isBot()) return;
-
-        // if message is not in the link channel, don't process it
         TextChannel linkChannel = DiscordSRV.getPlugin().getDestinationTextChannelForGameChannelName("link");
-        if (!event.getChannel().equals(linkChannel)) return;
+        if (linkChannel == null || !event.getChannel().equals(linkChannel)) return;
 
         Message receivedMessage = event.getMessage();
-        String reply = DiscordSRV.getPlugin().getAccountLinkManager().process(receivedMessage.getContentRaw(), event.getAuthor().getId());
-        if (reply != null) {
-            int deleteSeconds = DiscordSRV.config().getIntElse("MinecraftDiscordAccountLinkedMessageDeleteSeconds", 0);
-            RestAction<Message> repliedMessage = receivedMessage.reply(reply).delay(deleteSeconds, TimeUnit.SECONDS);
+        // Permanent instructions may be posted by webhooks. NEVER delete or process
+        // webhook messages, regardless of who owns them.
+        if (receivedMessage.isWebhookMessage()) return;
 
-            repliedMessage.queue(replyMessage -> {
-                // delete the message after a delay if the config option is set
-                if (deleteSeconds > 0) {
-                    replyMessage.delete().queue(null, ignoreFailedToDeleteMessage);
-                    receivedMessage.delete().queue(null, ignoreFailedToDeleteMessage.handle(ErrorResponse.MISSING_PERMISSIONS,
-                            e -> DiscordSRV.debug(Debug.ACCOUNT_LINKING, "Failed to delete " + receivedMessage.getAuthor() + "'s message in the link channel because of missing permissions.")));
-                }
-            });
-
+        // The whole channel is protected, including arbitrary messages from bots.
+        if (!enabled("DeleteMessages", true)) return;
+        if (!event.getGuild().getSelfMember().hasPermission(linkChannel, Permission.MESSAGE_MANAGE)) {
+            DiscordSRV.debug(Debug.ACCOUNT_LINKING, "Missing Manage Messages permission in the account-link channel");
+            return;
         }
+
+        // Delete FIRST: do not wait on account-link processing, even if the message
+        // contains no code or linking is currently unavailable.
+        receivedMessage.delete().queue(ignored -> {
+            if (event.getAuthor().isBot()) return;
+
+            if (!enabled("AllowLegacyCodes", false)) {
+                sendPrivateNotice(event, translated(LangUtil.Message.LINK_CHANNEL_INSTRUCTIONS,
+                        "For your privacy, use /link with your four-digit code. Only you can see the response."));
+                return;
+            }
+
+            if (DiscordSRV.getPlugin().getAccountLinkManager() == null) {
+                sendPrivateNotice(event, translated(LangUtil.Message.LINK_CHANNEL_UNAVAILABLE,
+                        "Account linking is temporarily unavailable. Please try again later."));
+                return;
+            }
+            try {
+                String result = DiscordSRV.getPlugin().getAccountLinkManager()
+                        .process(receivedMessage.getContentRaw(), event.getAuthor().getId());
+                if (result != null) {
+                    String format = translated(LangUtil.Message.LINK_CHANNEL_PRIVATE_RESULT, "%result%");
+                    sendPrivateNotice(event, clean(format.replace("%result%", result)));
+                }
+            } catch (Exception failure) {
+                DiscordSRV.warning("Legacy account-link request failed (" + failure.getClass().getSimpleName() + ")");
+                sendPrivateNotice(event, translated(LangUtil.Message.LINK_CHANNEL_UNAVAILABLE,
+                        "Account linking is temporarily unavailable. Please try again later."));
+            }
+        }, ignoreFailedToDeleteMessage.handle(ErrorResponse.MISSING_PERMISSIONS,
+                failure -> DiscordSRV.warning("Cannot remove messages from account-link channel: grant the bot Manage Messages permission.")));
+    }
+
+    private void sendPrivateNotice(GuildMessageReceivedEvent event, String content) {
+        // Plain text messages cannot receive ephemeral replies. DM users instead,
+        // never publish account link results in the channel.
+        event.getAuthor().openPrivateChannel().queue(dm -> dm.sendMessage(clean(content)).queue(
+                sent -> {}, failed -> DiscordSRV.debug(Debug.ACCOUNT_LINKING,
+                        "Unable to DM account-link instructions (user may have DMs disabled)")
+        ), failure -> DiscordSRV.debug(Debug.ACCOUNT_LINKING,
+                "Unable to open DM channel for account-link instructions"));
     }
 
     @Override

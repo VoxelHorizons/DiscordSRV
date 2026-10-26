@@ -332,6 +332,18 @@ MinecraftDiscordAccountLinkedAllowRelinkBySendingANewCode: false
 MinecraftDiscordAccountLinkedUsePM: true
 MinecraftDiscordAccountLinkedMessageDeleteSeconds: 0
 
+# VoxelHorizons: protected account-link channel
+# Only a dedicated Channels: {"link": "CHANNEL_ID"} mapping is protected.
+# The bot requires Manage Messages to delete ALL new regular messages.
+# Existing webhook messages are NEVER touched (ideal for permanent instructions).
+# /link code offers truly private, dismissible Discord ephemeral responses.
+# Normal messages cannot be ephemeral: delete them and privately DM guidance.
+# If AllowLegacyCodes is enabled, messages are processed ONLY after deletion succeeds,
+# with any result sent by DM. For strongest privacy, leave this false.
+MinecraftDiscordAccountLinkChannelDeleteMessages: true
+MinecraftDiscordAccountLinkChannelAllowLegacyCodes: false
+MinecraftDiscordAccountLinkChannelEnablePrivateSlashCommand: true
+
 # Server watchdog
 #
 # The watchdog constantly monitors the last time your server performed a game tick
