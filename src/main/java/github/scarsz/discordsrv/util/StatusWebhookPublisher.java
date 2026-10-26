@@ -11,6 +11,7 @@ package github.scarsz.discordsrv.util;
 import github.scarsz.discordsrv.DiscordSRV;
 import net.dv8tion.jda.api.OnlineStatus;
 import net.dv8tion.jda.api.Permission;
+import net.dv8tion.jda.api.entities.Icon;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.TextChannel;
 import net.dv8tion.jda.api.entities.Webhook;
@@ -24,8 +25,10 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 
 /**
@@ -35,6 +38,7 @@ import java.util.List;
  */
 public final class StatusWebhookPublisher {
     private static final String WEBHOOK_NAME_DEFAULT = "VH Server Status";
+    private static final int MAX_AVATAR_BYTES = 4 * 1024 * 1024;
     private final DiscordSRV plugin;
     private final File stateFile;
 
@@ -42,6 +46,9 @@ public final class StatusWebhookPublisher {
     private String messageChannelId;
     private String webhookChannelId;
     private String webhookUrl;
+    // Remembers which bot avatar was applied to which managed webhook across restarts.
+    private String syncedAvatarKey;
+    private boolean replaceMessageAfterAvatarUpdate;
 
     public StatusWebhookPublisher(DiscordSRV plugin) {
         this.plugin = plugin;
@@ -49,6 +56,7 @@ public final class StatusWebhookPublisher {
         YamlConfiguration state = YamlConfiguration.loadConfiguration(stateFile);
         messageId = state.getString("message-id");
         messageChannelId = state.getString("channel-id");
+        syncedAvatarKey = state.getString("avatar-key");
     }
 
     public boolean enabled() {
@@ -132,7 +140,10 @@ public final class StatusWebhookPublisher {
     private JSONObject buildPayload(String message, boolean offline) {
         JSONObject json = new JSONObject();
         json.put("allowed_mentions", new JSONObject().put("parse", new JSONArray()));
-        String avatarUrl = configString("StatusWebhookAvatarUrl", "").trim();
+        // A blank override means "use the DiscordSRV bot's current avatar" (not Discord's
+        // generic default). Also use it for new webhook messages while the managed
+        // webhook's persistent profile picture is being synchronized.
+        String avatarUrl = avatarUrl();
         if (StringUtils.isNotBlank(avatarUrl)) json.put("avatar_url", avatarUrl);
         if (DiscordSRV.config().getBooleanElse("StatusWebhookEmbedEnabled", true)) {
             String color = configString(offline ? "StatusWebhookEmbedOfflineColor" : "StatusWebhookEmbedOnlineColor",
@@ -167,8 +178,73 @@ public final class StatusWebhookPublisher {
         return StringUtils.isBlank(configured) ? WEBHOOK_NAME_DEFAULT : truncate(configured, 80);
     }
 
+    private String avatarUrl() {
+        String override = configString("StatusWebhookAvatarUrl", "").trim();
+        if (StringUtils.isNotBlank(override)) return override;
+        return plugin.getJda() == null ? "" : plugin.getJda().getSelfUser().getEffectiveAvatarUrl();
+    }
+
+    /**
+     * Update the actual webhook avatar (the profile image in Discord's webhook
+     * popover), not just the per-message avatar_url override. Do this at most
+     * once per avatar change, including for pre-existing generic-avatar hooks.
+     */
+    private void syncWebhookAvatar(Webhook webhook) {
+        String url = avatarUrl();
+        if (StringUtils.isBlank(url)) return;
+        String key = webhook.getId() + ":" + url;
+        if (key.equals(syncedAvatarKey) && webhook.getDefaultUser().getAvatarId() != null) return;
+
+        // Never fetch arbitrary plaintext URLs for avatar uploads.
+        if (!url.startsWith("https://")) {
+            DiscordSRV.warning("StatusWebhookAvatarUrl must be an HTTPS image URL.");
+            return;
+        }
+
+        try {
+            Request request = new Request.Builder().url(url)
+                    .header("User-Agent", "DiscordSRV/" + plugin.getDescription().getVersion())
+                    .build();
+            byte[] bytes;
+            try (Response response = plugin.getJda().getHttpClient().newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null)
+                    throw new IOException("Avatar image unavailable (HTTP " + response.code() + ")");
+                if (!response.header("Content-Type", "").toLowerCase(java.util.Locale.ROOT).startsWith("image/"))
+                    throw new IOException("Avatar URL did not return an image");
+                try (InputStream input = response.body().byteStream();
+                     ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+                    byte[] chunk = new byte[8192];
+                    int read;
+                    while ((read = input.read(chunk)) != -1) {
+                        if (buffer.size() + read > MAX_AVATAR_BYTES)
+                            throw new IOException("Avatar exceeds " + MAX_AVATAR_BYTES + " bytes");
+                        buffer.write(chunk, 0, read);
+                    }
+                    bytes = buffer.toByteArray();
+                }
+            }
+            if (bytes.length == 0) throw new IOException("Avatar image was empty");
+            webhook.getManager().setAvatar(Icon.from(bytes))
+                    .reason("DiscordSRV: synchronize status webhook profile picture").complete();
+            syncedAvatarKey = key;
+            // Existing messages can retain a snapshot of their old avatar.
+            // Replace the one managed message once so it also displays the new icon.
+            replaceMessageAfterAvatarUpdate = messageId != null
+                    && webhook.getChannel().getId().equals(messageChannelId);
+            persist();
+        } catch (Exception e) {
+            // Avatar failure must never prevent the status text itself from updating.
+            DiscordSRV.warning("Could not synchronize status webhook avatar: " + e.getClass().getSimpleName());
+        }
+    }
+
+
     private String findOrCreateWebhook(TextChannel channel) {
-        if (channel.getId().equals(webhookChannelId) && webhookUrl != null) return webhookUrl;
+        // Re-resolve a webhook when the bot's avatar or explicit override changes,
+        // including changes made while the server is running.
+        String avatar = avatarUrl();
+        if (channel.getId().equals(webhookChannelId) && webhookUrl != null
+                && syncedAvatarKey != null && syncedAvatarKey.endsWith(":" + avatar)) return webhookUrl;
         webhookChannelId = null;
         webhookUrl = null;
         Member self = channel.getGuild().getSelfMember();
@@ -193,6 +269,7 @@ public final class StatusWebhookPublisher {
                 selected = channel.createWebhook(webhookName())
                         .reason("DiscordSRV: persistent server status").complete();
             }
+            syncWebhookAvatar(selected);
             webhookChannelId = channel.getId();
             webhookUrl = selected.getUrl();
             return webhookUrl;
@@ -213,6 +290,17 @@ public final class StatusWebhookPublisher {
         for (int attempt = 0; attempt < 2; attempt++) {
             String url = findOrCreateWebhook(channel);
             if (url == null) return;
+            if (replaceMessageAfterAvatarUpdate && messageId != null) {
+                ApiResult deletion = request("DELETE", url + "/messages/" + messageId, null);
+                if (deletion.code == 204 || deletion.code == 404) {
+                    messageId = null;
+                    replaceMessageAfterAvatarUpdate = false;
+                    persist();
+                } else {
+                    // Retry on the next status update instead of creating duplicates.
+                    warnApi("replacing old-avatar", deletion);
+                }
+            }
             if (messageId != null) {
                 ApiResult edit = request("PATCH", url + "/messages/" + messageId, payload);
                 if (edit.code == 200) return;
@@ -331,6 +419,7 @@ public final class StatusWebhookPublisher {
         YamlConfiguration state = new YamlConfiguration();
         state.set("channel-id", messageChannelId);
         state.set("message-id", messageId);
+        state.set("avatar-key", syncedAvatarKey);
         try {
             File folder = stateFile.getParentFile();
             if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("Could not create plugin data folder");
