@@ -120,7 +120,7 @@ StatusWebhookEnabled: false
 StatusWebhookChannelId: ""
 StatusWebhookName: "VH Server Status"
 StatusWebhookAvatarUrl: ""
-StatusWebhookOnlineMessage: "🟢 **Server Online**\\n🎮 %status%\\n👥 %online%/%max% players"
+StatusWebhookOnlineMessage: "🟢 **Server Online**\n🎮 %status%\n👥 %online%/%max% players"
 StatusWebhookOfflineMessage: "🔴 **Server Offline**"
 StatusWebhookShutdownAction: "EDIT"
 StatusWebhookEmbedEnabled: true
