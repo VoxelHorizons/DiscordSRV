@@ -434,6 +434,12 @@ UnknownCode: "I don't know of such a code, try again."
 InvalidCode: "Are you sure that's your code? Link codes are 4 numbers long."
 DiscordAccountLinked: "Your Discord account has been linked to %name% (%uuid%)"
 DiscordAccountAlreadyLinked: "You are already linked to %username% (%uuid%)"
+# Protected linking-channel messages: ephemeral for /link, DM only for deleted text messages
+# %result% inserts the existing configurable DiscordAccountLinked/UnknownCode/etc response
+LinkChannelPrivateInstructions: "For your privacy, run `/link` with the code from Minecraft. Your result will be visible only to you and can be dismissed."
+LinkChannelPrivateResultFormat: "%result%"
+LinkChannelPrivateOutsideChannel: "Please run `/link` in the account-link channel."
+LinkChannelPrivateUnavailable: "Account linking is temporarily unavailable. Please try again later."
 DiscordLinkedAccountRequired: "You attempted to say the following message to the game chat but this server requires that you have your Minecraft account linked to your Discord account. Link it in-game by typing `/discord link`. \n```%message%```"
 DiscordLinkedAccountCheckFailed: "Unable to check if your account is linked, please try again later"
 # Minecraft

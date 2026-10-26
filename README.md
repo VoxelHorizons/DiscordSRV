@@ -62,6 +62,38 @@ uptime monitoring if detecting those events is required. If several Minecraft
 instances share one Discord channel, give each one a distinct
 `StatusWebhookName` so they do not edit each other's status.
 
+## VoxelHorizons: secure account-link channel
+
+Map `"link": "YOUR_DISCORD_CHANNEL_ID"` in `Channels`. The bot must have
+**Manage Messages** in the link channel, and its application must have the
+`applications.commands` scope to register the `/link` slash command.
+
+```yaml
+MinecraftDiscordAccountLinkChannelDeleteMessages: true
+MinecraftDiscordAccountLinkChannelAllowLegacyCodes: false
+MinecraftDiscordAccountLinkChannelEnablePrivateSlashCommand: true
+```
+
+* All **new ordinary messages** in the mapped link channel (including failed/invalid
+  codes and bot messages) are deleted, regardless of whether they can be processed.
+  Messages sent by **webhooks are never deleted**; your instructional webhook remains.
+* Use **`/link code:1234`** for actual linking. The Discord interaction and its
+  reply are **ephemeral (only visible to the invoking user, dismissible)**, so
+  the code never appears as a public chat message.
+* If someone posts a normal message, it is deleted first and the bot sends
+  private instructions by DM (if the user allows DMs). Discord **cannot** give
+  ephemeral replies to normal messages. To keep legacy text-code linking,
+  explicitly set `MinecraftDiscordAccountLinkChannelAllowLegacyCodes: true`;
+  only successfully deleted messages will be processed and replies are sent
+  privately by DM rather than published to the channel.
+* Edit `LinkChannelPrivateInstructions`, `LinkChannelPrivateResultFormat`,
+  `LinkChannelPrivateOutsideChannel`, and `LinkChannelPrivateUnavailable`
+  in `messages.yml`. `%result%` uses existing configurable account-link
+  result messages.
+* This cleans up **new** messages, not historical channel history. Deletion
+  is not instant and cannot guarantee secrecy for an already-posted plain
+  message; use slash commands and/or deny Send Messages permission to users.
+
 ## Thanks to:
 <table>
     <tr>

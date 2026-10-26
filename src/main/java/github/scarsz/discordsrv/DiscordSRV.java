@@ -882,6 +882,8 @@ public class DiscordSRV extends JavaPlugin {
             DiscordSRV.api.requireCacheFlag(CacheFlag.ACTIVITY);
             DiscordSRV.api.requireCacheFlag(CacheFlag.CLIENT_STATUS);
         }
+        DiscordAccountLinkListener accountLinkListener = new DiscordAccountLinkListener();
+        api.addSlashCommandProvider(accountLinkListener);
         try {
             // see ApiManager for our default intents & cache flags
             jda = JDABuilder.create(api.getIntents())
@@ -900,7 +902,7 @@ public class DiscordSRV extends JavaPlugin {
                     .addEventListeners(new DiscordBanListener())
                     .addEventListeners(new DiscordChatListener())
                     .addEventListeners(new DiscordConsoleListener())
-                    .addEventListeners(new DiscordAccountLinkListener())
+                    .addEventListeners(accountLinkListener)
                     .addEventListeners(new DiscordDisconnectListener())
                     .addEventListeners(api)
                     .addEventListeners(groupSynchronizationManager)
