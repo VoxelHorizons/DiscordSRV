@@ -198,6 +198,8 @@ public final class StatusWebhookPublisher {
     private void upsert(TextChannel channel, JSONObject payload) {
         // A changed channel must not attempt to edit a message from the old channel.
         if (!channel.getId().equals(messageChannelId)) {
+            // Best-effort removal from the previous channel before moving the status.
+            if (messageChannelId != null && messageId != null) deleteTrackedMessage(false);
             messageChannelId = null;
             messageId = null;
         }
