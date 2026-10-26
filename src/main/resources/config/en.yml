@@ -110,6 +110,9 @@ StatusUpdateRateInMinutes: 2
 # an explicit StatusWebhookChannelId. The channel must be a TEXT channel and
 # the bot must have Manage Webhooks permission there.
 # The webhook is created/reused automatically; do not paste a webhook URL/token.
+# StatusWebhookAvatarUrl: leave blank to mirror the DiscordSRV bot's profile picture
+# onto the managed webhook itself and its messages; alternatively provide a custom HTTPS image URL.
+# Changing the avatar may recreate the single managed message once so the new image displays.
 # DiscordGameStatus's current rotating value is available as %status%.
 # Other placeholders: %online%, %max%, %online_status%, and PlaceholderAPI values.
 # ShutdownAction: EDIT (show offline), DELETE (remove message), or
@@ -119,7 +122,7 @@ StatusUpdateRateInMinutes: 2
 StatusWebhookEnabled: false
 StatusWebhookChannelId: ""
 StatusWebhookName: "VH Server Status"
-StatusWebhookAvatarUrl: ""
+StatusWebhookAvatarUrl: "" # blank = automatically use the DiscordSRV bot's picture
 StatusWebhookOnlineMessage: "🟢 **Server Online**\n🎮 %status%\n👥 %online%/%max% players"
 StatusWebhookOfflineMessage: "🔴 **Server Offline**"
 StatusWebhookShutdownAction: "EDIT"
